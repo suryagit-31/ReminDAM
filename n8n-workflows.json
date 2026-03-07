@@ -1,0 +1,163 @@
+{
+  "workflows": [
+    {
+      "name": "Task Reminder System",
+      "nodes": [
+        {
+          "parameters": {
+            "rule": {
+              "interval": [
+                {
+                  "field": "minutes",
+                  "minutesInterval": 30
+                }
+              ]
+            }
+          },
+          "name": "Schedule Every 30 Minutes",
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "typeVersion": 1,
+          "position": [250, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$env.VITE_SUPABASE_URL}}/rest/v1/tasks?status=eq.pending&reminder_sent=eq.false",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "apikey",
+                  "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+                },
+                {
+                  "name": "Authorization",
+                  "value": "Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "name": "Fetch Pending Tasks",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [450, 300]
+        },
+        {
+          "parameters": {
+            "jsCode": "const tasks = $input.all();\nconst readyTasks = [];\nconst now = new Date();\n\nfor (const task of tasks) {\n  const dueDate = new Date(task.json.due_date);\n  const remindBefore = task.json.remind_before;\n  const reminderDate = new Date(dueDate);\n  reminderDate.setDate(reminderDate.getDate() - remindBefore);\n\n  // Check if today is reminder date\n  const isSameDay = reminderDate.toDateString() === now.toDateString();\n\n  if (!isSameDay) continue;\n\n  // Check time slot\n  const currentHour = now.getHours();\n  const timeSlot = task.json.time_slot;\n  let shouldSend = false;\n\n  if (timeSlot === 'morning' && currentHour >= 9) shouldSend = true;\n  if (timeSlot === 'afternoon' && currentHour >= 13) shouldSend = true;\n  if (timeSlot === 'evening' && currentHour >= 19) shouldSend = true;\n  if (timeSlot === 'custom') {\n    const customHour = new Date(task.json.custom_time).getHours();\n    if (currentHour >= customHour) shouldSend = true;\n  }\n\n  if (shouldSend) {\n    readyTasks.push(task);\n  }\n}\n\nreturn readyTasks;"
+          },
+          "name": "Filter Tasks Ready for Reminder",
+          "type": "n8n-nodes-base.code",
+          "typeVersion": 2,
+          "position": [650, 300]
+        },
+        {
+          "parameters": {
+            "authentication": "oAuth2",
+            "resource": "message",
+            "operation": "send",
+            "to": "={{$json.email}}",
+            "subject": "Task Reminder: {{$json.title}}",
+            "emailType": "html",
+            "message": "<h2>Task Reminder</h2>\n<p><strong>Task:</strong> {{$json.title}}</p>\n<p><strong>Description:</strong> {{$json.description}}</p>\n<p><strong>Due Date:</strong> {{$json.due_date}}</p>\n<p>This is your reminder to complete this task.</p>\n<br>\n<p style=\"color: #666; font-size: 12px;\">Sent from ReminDAM - Your Task Reminder App</p>"
+          },
+          "name": "Send Reminder Email",
+          "type": "n8n-nodes-base.gmail",
+          "typeVersion": 2,
+          "position": [850, 300]
+        },
+        {
+          "parameters": {
+            "url": "={{$env.VITE_SUPABASE_URL}}/rest/v1/tasks?id=eq.{{$json.id}}",
+            "method": "PATCH",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "apikey",
+                  "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+                },
+                {
+                  "name": "Authorization",
+                  "value": "Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+                },
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "name": "Prefer",
+                  "value": "return=minimal"
+                }
+              ]
+            },
+            "sendBody": true,
+            "bodyParameters": {
+              "parameters": [
+                {
+                  "name": "reminder_sent",
+                  "value": "true"
+                }
+              ]
+            },
+            "options": {}
+          },
+          "name": "Update reminder_sent",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 3,
+          "position": [1050, 300]
+        }
+      ],
+      "connections": {
+        "Schedule Every 30 Minutes": {
+          "main": [
+            [
+              {
+                "node": "Fetch Pending Tasks",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Fetch Pending Tasks": {
+          "main": [
+            [
+              {
+                "node": "Filter Tasks Ready for Reminder",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Filter Tasks Ready for Reminder": {
+          "main": [
+            [
+              {
+                "node": "Send Reminder Email",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Send Reminder Email": {
+          "main": [
+            [
+              {
+                "node": "Update reminder_sent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    }
+  ]
+}
