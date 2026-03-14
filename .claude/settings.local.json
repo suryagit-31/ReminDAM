@@ -6,7 +6,10 @@
       "Bash(ls:*)",
       "Bash(grep:*)",
       "Bash(npm run:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)"
     ]
   }
 }
