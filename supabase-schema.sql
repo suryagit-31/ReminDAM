@@ -42,15 +42,28 @@
 -- RLS policies use auth.uid() to get the current user's ID from JWT token
 -- ============================================
 
--- Create enum types
-CREATE TYPE time_slot_enum AS ENUM ('morning', 'afternoon', 'evening', 'custom');
-CREATE TYPE status_enum AS ENUM ('pending', 'completed');
+-- Create enum types (idempotent)
+DO $$
+BEGIN
+  CREATE TYPE time_slot_enum AS ENUM ('morning', 'afternoon', 'evening', 'custom');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+DO $$
+BEGIN
+  CREATE TYPE status_enum AS ENUM ('pending', 'completed');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
 
 -- ============================================
 -- TASKS TABLE (Your Application Data)
 -- ============================================
 -- Create tasks table with user_id foreign key that references auth.users
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,  -- Links to Supabase Auth user
   title TEXT NOT NULL,
@@ -66,10 +79,10 @@ CREATE TABLE tasks (
 );
 
 -- Create indexes for performance
-CREATE INDEX idx_tasks_user_id ON tasks(user_id);
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_reminder_sent ON tasks(reminder_sent);
-CREATE INDEX idx_tasks_due_date ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_reminder_sent ON tasks(reminder_sent);
+CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
@@ -102,18 +115,6 @@ CREATE POLICY "Users can delete their own tasks"
   FOR DELETE
   USING (auth.uid() = user_id);
 
--- Create a policy for the n8n workflow to read tasks for sending reminders
--- You'll need to create a service role key for n8n to use
-CREATE POLICY "Service role can read all tasks for reminders"
-  ON tasks
-  FOR SELECT
-  USING (true);
-
-CREATE POLICY "Service role can update reminder_sent"
-  ON tasks
-  FOR UPDATE
-  USING (true)
-  WITH CHECK (true);
-
--- Note: The service role policies will only work when using the service_role key
--- For n8n, use the service_role key from Supabase dashboard
+-- n8n automation should use the Supabase `service_role` key.
+-- In Supabase, requests made with the `service_role` key bypass RLS, so you do NOT
+-- need to add any "allow all" RLS policies (those would be unsafe for normal users).

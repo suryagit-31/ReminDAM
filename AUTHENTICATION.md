@@ -382,13 +382,9 @@ Users can only delete their own tasks.
 
 ### Service Role Bypass
 
-For n8n automation, we use the `service_role` key which bypasses RLS:
+For n8n automation, use the Supabase `service_role` key.
 
-```sql
-CREATE POLICY "Service role can read all tasks for reminders"
-  ON tasks FOR SELECT
-  USING (true);  -- No restriction
-```
+In Supabase, requests made with the `service_role` key **bypass RLS**, so you should **not** add any “allow all” RLS policies for normal clients. Those policies would weaken isolation for authenticated users if they ever applied to non-service requests.
 
 **Security Note:** Service role key must NEVER be exposed in frontend code!
 
